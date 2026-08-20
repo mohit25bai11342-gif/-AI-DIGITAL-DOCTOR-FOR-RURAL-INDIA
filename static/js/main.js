@@ -15,6 +15,7 @@ function showToast(message) {
     }, 3000);
 }
 
+
 async function predict() {
 
     const symptoms = document.getElementById("symptoms").value.trim();
@@ -46,11 +47,13 @@ async function predict() {
         const data = await response.json();
 
         if (data.error) {
+
             result.innerHTML = `
                 <div class="result-warning">
                     ${data.error}
                 </div>
             `;
+
             return;
         }
 
@@ -131,13 +134,11 @@ async function addReminder() {
         } else {
 
             showToast(data.error || "Unable to add reminder.");
-
         }
 
     } catch (error) {
 
         showToast("Unable to connect to server.");
-
     }
 }
 
@@ -181,7 +182,6 @@ async function sendSOS() {
     } catch (error) {
 
         showToast("Unable to activate SOS.");
-
     }
 }
 
@@ -209,109 +209,138 @@ async function findHospitals() {
         return;
     }
 
-    navigator.geolocation.getCurrentPosition(
+   navigator.geolocation.getCurrentPosition(
 
-        async function(position) {
+    async function(position) {
 
-            const latitude = position.coords.latitude;
-            const longitude = position.coords.longitude;
+        // Get user's REAL GPS coordinates
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const accuracy = position.coords.accuracy;
 
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">🏥</div>
-                    <h3>Searching nearby hospitals...</h3>
-                    <p>Finding real healthcare facilities near you.</p>
-                </div>
-            `;
+        // Debug information
+        console.log("========== GPS LOCATION ==========");
+        console.log("Latitude:", latitude);
+        console.log("Longitude:", longitude);
+        console.log("Accuracy:", accuracy, "meters");
+        console.log("===================================");
 
-            try {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">📍</div>
+                <h3>Location detected</h3>
+                <p>
+                    Latitude: ${latitude.toFixed(6)}<br>
+                    Longitude: ${longitude.toFixed(6)}<br>
+                    GPS Accuracy: ±${Math.round(accuracy)} meters
+                </p>
+                <p>Searching nearby hospitals...</p>
+            </div>
+        `;
 
-                const response = await fetch(
-                    `/hospitals?latitude=${latitude}&longitude=${longitude}`
-                );
+        try {
 
-                if (!response.ok) {
-                    throw new Error("Server error");
-                }
+            const response = await fetch(
+                `/hospitals?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}`
+            );
 
-                const hospitals = await response.json();
+            if (!response.ok) {
+                throw new Error("Server error");
+            }
 
-                if (!hospitals.length) {
+            const hospitals = await response.json();
 
-                    container.innerHTML = `
-                        <div class="result-warning">
-                            No mapped hospitals were found within 20 km.
-                        </div>
-                    `;
-
-                    return;
-                }
-
-                container.innerHTML = hospitals.map(hospital => `
-
-                    <div class="hospital-card">
-
-                        <h3>🏥 ${hospital.name}</h3>
-
-                        <p>
-                            📍 <strong>${hospital.distance} km away</strong>
-                        </p>
-
-                        <p>
-                            ${hospital.address}
-                        </p>
-
-                        <p>
-                            📞 ${hospital.phone}
-                        </p>
-
-                        <a
-                            href="${hospital.maps_url}"
-                            target="_blank"
-                            class="maps-button"
-                        >
-                            🗺️ Get Directions
-                        </a>
-
-                    </div>
-
-                `).join("");
-
-            } catch (error) {
+            if (!Array.isArray(hospitals) || hospitals.length === 0) {
 
                 container.innerHTML = `
                     <div class="result-warning">
-                        Unable to retrieve hospitals.
-                        Please check your internet connection.
+                        No mapped hospitals were found near your location.
                     </div>
                 `;
 
+                return;
             }
-        },
 
-        function(error) {
+            container.innerHTML = hospitals.map(hospital => `
+
+                <div class="hospital-card">
+
+                    <h3>🏥 ${hospital.name}</h3>
+
+                    <p>
+                        📍 <strong>${hospital.distance} km away</strong>
+                    </p>
+
+                    <p>
+                        ${hospital.address}
+                    </p>
+
+                    <p>
+                        📞 ${hospital.phone}
+                    </p>
+
+                    <a
+                        href="${hospital.maps_url}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="maps-button"
+                    >
+                        🗺️ Get Directions
+                    </a>
+
+                </div>
+
+            `).join("");
+
+        } catch (error) {
+
+            console.error("Hospital search error:", error);
 
             container.innerHTML = `
                 <div class="result-warning">
-                    📍 Location access is required.
-                    Please allow location permission and try again.
+                    Unable to retrieve hospitals.
+                    Please check your internet connection.
                 </div>
             `;
-
-        },
-
-        {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 0
         }
-    );
+    },
+
+    function(error) {
+
+        console.error("GPS Error:", error);
+
+        let message = "Unable to get your location.";
+
+        if (error.code === 1) {
+            message = "Location permission was denied. Please allow location access.";
+        }
+        else if (error.code === 2) {
+            message = "Your location could not be determined. Please enable GPS/location services.";
+        }
+        else if (error.code === 3) {
+            message = "Location request timed out. Please try again.";
+        }
+
+        container.innerHTML = `
+            <div class="result-warning">
+                📍 ${message}
+            </div>
+        `;
+    },
+
+    {
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 0
+    }
+  );
 }
 
 
 async function submitFeedback() {
 
     const message = document.getElementById("feedback").value.trim();
+
     const rating = parseInt(
         document.getElementById("rating").value
     );
@@ -347,7 +376,6 @@ async function submitFeedback() {
     } catch (error) {
 
         showToast("Unable to submit feedback.");
-
     }
 }
 
@@ -385,25 +413,312 @@ function startVoiceInput() {
         document.getElementById("symptoms").value = text;
 
         showToast("Voice converted to text.");
-
     };
 
     recognition.onerror = function() {
 
         showToast("Unable to recognize your voice.");
-
     };
+}
+
+
+let smartwatchMonitoring = false;
+let smartwatchTimer = null;
+
+
+async function connectDevice() {
+
+    if (smartwatchMonitoring) {
+
+        showToast("⌚ MARV NEO is already connected.");
+
+        return;
+    }
+
+    showToast("⌚ Connecting to MARV NEO...");
+
+    try {
+
+        const response = await fetch("/watch-data");
+
+        if (!response.ok) {
+            throw new Error("Smartwatch server error");
+        }
+
+        const data = await response.json();
+
+        if (data.connected) {
+
+            smartwatchMonitoring = true;
+
+            updateSmartwatchVitals(data);
+
+            showToast("🟢 MARV NEO connected successfully.");
+
+            startSmartwatchMonitoring();
+
+        } else {
+
+            updateSmartwatchOffline();
+
+            showToast(
+                "🔴 MARV NEO is not connected to the laptop."
+            );
+        }
+
+    } catch (error) {
+
+        updateSmartwatchOffline();
+
+        showToast(
+            "Unable to connect to MARV NEO."
+        );
+    }
+}
+
+
+function updateSmartwatchVitals(data) {
+
+    const heartRate =
+        document.getElementById("heartRate");
+
+    const spo2 =
+        document.getElementById("spo2");
+
+    const temperature =
+        document.getElementById("temperature");
+
+    const bloodPressure =
+        document.getElementById("bloodPressure");
+
+
+    if (data.heart_rate !== null &&
+        data.heart_rate !== undefined) {
+
+        heartRate.innerText =
+            data.heart_rate;
+
+    } else {
+
+        heartRate.innerText = "--";
+    }
+
+
+    spo2.innerText = "--";
+
+    temperature.innerText = "--";
+
+    bloodPressure.innerText = "--";
+}
+
+
+function updateSmartwatchOffline() {
+
+    document.getElementById("heartRate").innerText = "--";
+
+    document.getElementById("spo2").innerText = "--";
+
+    document.getElementById("temperature").innerText = "--";
+
+    document.getElementById("bloodPressure").innerText = "--";
+}
+
+
+function startSmartwatchMonitoring() {
+
+    if (smartwatchTimer) {
+        clearInterval(smartwatchTimer);
+    }
+
+    smartwatchTimer = setInterval(
+        getSmartwatchData,
+        3000
+    );
+}
+
+
+async function getSmartwatchData() {
+
+    try {
+
+        const response =
+            await fetch("/watch-data");
+
+        if (!response.ok) {
+            throw new Error("Server error");
+        }
+
+        const data =
+            await response.json();
+
+        if (data.connected) {
+
+            updateSmartwatchVitals(data);
+
+        } else {
+
+            smartwatchMonitoring = false;
+
+            updateSmartwatchOffline();
+
+        }
+
+    } catch (error) {
+
+        smartwatchMonitoring = false;
+
+        updateSmartwatchOffline();
+    }
+}
+
+
+window.addEventListener(
+    "DOMContentLoaded",
+    function() {
+
+        getSmartwatchData();
+
+    }
+);
+let watchConnected = false;
+
+async function updateWatchData() {
+
+    try {
+
+        const response = await fetch(
+            "/watch-data",
+            {
+                cache: "no-store"
+            }
+        );
+
+        if (!response.ok) {
+            return;
+        }
+
+        const data = await response.json();
+
+        watchConnected = data.connected;
+
+        updateWatchConnectionUI(
+            data.connected,
+            data.device
+        );
+
+        if (
+            data.heart_rate !== null &&
+            data.heart_rate !== undefined
+        ) {
+
+            document.getElementById(
+                "heartRate"
+            ).innerText =
+                Math.round(data.heart_rate);
+
+        }
+
+        if (
+            data.spo2 !== null &&
+            data.spo2 !== undefined
+        ) {
+
+            document.getElementById(
+                "spo2"
+            ).innerText =
+                Math.round(data.spo2);
+
+        }
+
+        if (
+            data.temperature !== null &&
+            data.temperature !== undefined
+        ) {
+
+            document.getElementById(
+                "temperature"
+            ).innerText =
+                Number(
+                    data.temperature
+                ).toFixed(1);
+
+        }
+
+        if (
+            data.blood_pressure !== null &&
+            data.blood_pressure !== undefined
+        ) {
+
+            document.getElementById(
+                "bloodPressure"
+            ).innerText =
+                data.blood_pressure;
+
+        }
+
+    } catch (error) {
+
+        updateWatchConnectionUI(
+            false,
+            "MARV NEO"
+        );
+
+    }
+}
+
+
+function updateWatchConnectionUI(
+    connected,
+    device
+) {
+
+    const button =
+        document.querySelector(
+            ".outline-btn"
+        );
+
+    if (!button) {
+        return;
+    }
+
+    if (connected) {
+
+        button.innerText =
+            "🟢 MARV NEO Connected";
+
+    } else {
+
+        button.innerText =
+            "🔵 Connect IoT Device";
+
+    }
 }
 
 
 function connectDevice() {
 
-    showToast(
-        "IoT device connection module is ready for ESP32 integration."
-    );
+    if (watchConnected) {
 
-    document.getElementById("heartRate").innerText = "--";
-    document.getElementById("spo2").innerText = "--";
-    document.getElementById("temperature").innerText = "--";
-    document.getElementById("bloodPressure").innerText = "--";
+        showToast(
+            "🟢 MARV NEO is connected."
+        );
+
+    } else {
+
+        showToast(
+            "🔵 Searching for MARV NEO..."
+        );
+
+    }
+
+    updateWatchData();
 }
+
+
+setInterval(
+    updateWatchData,
+    2000
+);
+
+
+updateWatchData();

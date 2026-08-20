@@ -11,20 +11,27 @@ OVERPASS_SERVERS = [
 
 def calculate_distance(lat1, lon1, lat2, lon2):
 
-    earth_radius = 6371
+    earth_radius = 6371.0
 
-    lat1 = math.radians(lat1)
-    lat2 = math.radians(lat2)
+    lat1 = float(lat1)
+    lon1 = float(lon1)
+    lat2 = float(lat2)
+    lon2 = float(lon2)
+
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
 
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
 
     a = (
         math.sin(dlat / 2) ** 2
-        + math.cos(lat1)
-        * math.cos(lat2)
+        + math.cos(lat1_rad)
+        * math.cos(lat2_rad)
         * math.sin(dlon / 2) ** 2
     )
+
+    a = max(0.0, min(1.0, a))
 
     c = 2 * math.atan2(
         math.sqrt(a),
@@ -37,12 +44,12 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 def get_coordinates(element):
 
     if "lat" in element and "lon" in element:
-        return element["lat"], element["lon"]
+        return float(element["lat"]), float(element["lon"])
 
     center = element.get("center", {})
 
     if "lat" in center and "lon" in center:
-        return center["lat"], center["lon"]
+        return float(center["lat"]), float(center["lon"])
 
     return None, None
 
@@ -53,13 +60,19 @@ def get_address(tags):
         tags.get("addr:housenumber"),
         tags.get("addr:street"),
         tags.get("addr:suburb"),
+        tags.get("addr:village"),
+        tags.get("addr:town"),
         tags.get("addr:city"),
         tags.get("addr:district"),
         tags.get("addr:state"),
         tags.get("addr:postcode")
     ]
 
-    parts = [str(x) for x in parts if x]
+    parts = [
+        str(value).strip()
+        for value in parts
+        if value
+    ]
 
     return ", ".join(parts) if parts else "Address not available"
 
@@ -69,6 +82,7 @@ def get_phone(tags):
     return (
         tags.get("phone")
         or tags.get("contact:phone")
+        or tags.get("contact:mobile")
         or "Phone not available"
     )
 
@@ -89,6 +103,7 @@ def find_hospitals(latitude, longitude):
         nwr["amenity"="clinic"](around:{radius},{latitude},{longitude});
         nwr["healthcare"="clinic"](around:{radius},{latitude},{longitude});
         nwr["healthcare"="centre"](around:{radius},{latitude},{longitude});
+        nwr["healthcare"="health_centre"](around:{radius},{latitude},{longitude});
     );
 
     out center tags;
@@ -133,7 +148,7 @@ def find_hospitals(latitude, longitude):
 
                 lat, lon = get_coordinates(element)
 
-                if lat is None:
+                if lat is None or lon is None:
                     continue
 
                 distance = calculate_distance(
@@ -144,9 +159,9 @@ def find_hospitals(latitude, longitude):
                 )
 
                 key = (
-                    name.lower(),
-                    round(float(lat), 5),
-                    round(float(lon), 5)
+                    name.lower().strip(),
+                    round(lat, 5),
+                    round(lon, 5)
                 )
 
                 if key in seen:
@@ -159,7 +174,7 @@ def find_hospitals(latitude, longitude):
                     f"&destination={lat},{lon}"
                 )
 
-                hospitals.append({
+                hospital = {
                     "name": name,
                     "type": (
                         tags.get("amenity")
@@ -172,16 +187,32 @@ def find_hospitals(latitude, longitude):
                     "longitude": lon,
                     "distance": round(distance, 2),
                     "maps_url": maps_url
-                })
+                }
+
+                hospitals.append(hospital)
 
             hospitals.sort(
-                key=lambda x: x["distance"]
+                key=lambda hospital: hospital["distance"]
+            )
+
+            print(
+                "User location:",
+                latitude,
+                longitude
             )
 
             print(
                 "Hospitals found:",
                 len(hospitals)
             )
+
+            for hospital in hospitals[:10]:
+                print(
+                    hospital["name"],
+                    "->",
+                    hospital["distance"],
+                    "km"
+                )
 
             return hospitals[:30]
 
